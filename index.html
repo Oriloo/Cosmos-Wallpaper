@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmos - Stellar Vortex Background</title>
+    <style>
+        h1, p { margin: 0; padding: 0; font-family: "Times New Roman", Times, serif; font-weight: 100; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #050505; }
+        .content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-family: "Times New Roman", Times, serif !important; text-align: center; pointer-events: none; z-index: 10; mix-blend-mode: difference; font-weight: 700 !important; }
+        h1 { font-size: 3rem; letter-spacing: 0.5rem; text-transform: uppercase; }
+        #localTime { font-size: 2rem; letter-spacing: 0.2rem; }
+    </style>
+</head>
+<body>
+<div class="content">
+    <h1>Cosmos</h1>
+    <p id="localTime">--:--:--</p>
+</div>
+<canvas id="starCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('starCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    let width, height, centerX, centerY, maxDist;
+    let fpsInterval, now, then, elapsed;
+    let stars = [];
+
+    const config = {
+        starMultiplier: 4,
+        speed: 0.05,
+        delta: 0.01,
+        trailLength: 10,
+        stepMultiplier: 0.2,
+        suctionSpeed: 0.2,
+        colorBase: 200,
+        colorVar: 60,
+        fps: 20
+    };
+
+    class Star {
+        constructor() {
+            this.angle = Math.random() * 6.28318530718;
+            this.reset(false);
+        }
+
+        reset(isRespawn) {
+            if (isRespawn) {
+                this.radius = maxDist;
+            } else {
+                this.radius = Math.random() * maxDist;
+            }
+            this.size = Math.random() * 1.5 + 0.5;
+            this.baseOpacity = Math.random() * 0.8 + 0.2;
+            this.colorHue = Math.floor(config.colorBase + (Math.random() * config.colorVar));
+            this.updatePhysics();
+        }
+
+        updatePhysics() {
+            const distFactor = this.radius * config.delta;
+            this.angularSpeed = config.speed / (1 + (distFactor * distFactor));
+            this.stepMult = this.radius * config.stepMultiplier;
+        }
+
+        update() {
+            this.radius -= config.suctionSpeed;
+            if (this.radius < 50) {
+                this.reset(true);
+                return;
+            }
+            this.updatePhysics();
+            this.angle += this.angularSpeed;
+        }
+
+        draw() {
+            const xHead = centerX + Math.cos(this.angle) * this.radius;
+            const yHead = centerY + Math.sin(this.angle) * this.radius;
+            const padding = 1000;
+            if (xHead < -padding || xHead > width + padding || yHead < -padding || yHead > height + padding) return;
+            let fadeFactor = 1 - (this.radius / maxDist);
+            if (fadeFactor < 0) fadeFactor = 0;
+            const flicker = Math.random() > 0.9 ? 1.1 : 1;
+            const masterOpacity = this.baseOpacity * flicker * (fadeFactor * fadeFactor);
+            if (masterOpacity < 0.01) return;
+            ctx.fillStyle = `hsla(${this.colorHue}, 50%, 80%, ${masterOpacity.toFixed(2)})`;
+            ctx.fillRect(xHead, yHead, this.size, this.size);
+            const trailColorBase = `hsla(${this.colorHue}, 20%, 40%,`;
+            let lastX = xHead;
+            let lastY = yHead;
+
+            for (let i = 1; i < config.trailLength; i++) {
+                const trailAngle = this.angle - (i * this.angularSpeed * this.stepMult);
+                const trailRadius = this.radius + (i * this.stepMult * config.suctionSpeed);
+                const x = centerX + Math.cos(trailAngle) * trailRadius;
+                const y = centerY + Math.sin(trailAngle) * trailRadius;
+                const trailOpacity = (masterOpacity * 0.5) * (1 - i / config.trailLength);
+                if (trailOpacity < 0.001) continue;
+                const trailSize = this.size * (1 - (i / config.trailLength));
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                ctx.strokeStyle = `${trailColorBase} ${trailOpacity.toFixed(3)})`;
+                ctx.lineWidth = trailSize;
+                ctx.stroke();
+                lastX = x;
+                lastY = y;
+            }
+        }
+    }
+
+    function init() {
+        resize();
+        startAnimating(config.fps);
+    }
+
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        centerX = width / 2;
+        centerY = height / 2;
+        maxDist = Math.max(width, height) * 0.65;
+        const starCount = Math.floor(width * config.starMultiplier);
+        stars = new Array(starCount);
+        for (let i = 0; i < starCount; i++) {
+            stars[i] = new Star();
+        }
+    }
+
+    function startAnimating(fps) {
+        fpsInterval = 1000 / fps;
+        then = Date.now();
+        animate();
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        now = Date.now();
+        elapsed = now - then;
+        if (elapsed > fpsInterval) {
+            then = now - (elapsed % fpsInterval);
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, width, height);
+            ctx.globalCompositeOperation = 'lighter';
+            for (let i = 0; i < stars.length; i++) {
+                const star = stars[i];
+                star.update();
+                star.draw();
+            }
+        }
+    }
+
+    function updateLocalTime() {
+        const el = document.getElementById('localTime');
+        if (!el) return;
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString(navigator.language || undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+        el.textContent = timeStr;
+    }
+
+    updateLocalTime();
+    setInterval(updateLocalTime, 1000);
+  
+    let resizeTimeout;
+  
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            resize();
+        }, 100);
+    });
+  
+    window.config = config;
+    init();
+</script>
+</body>
+</html>
